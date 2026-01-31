@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client
-import re  # Added for smarter link processing
 
 # 1. DATABASE CONNECTION
 PROJECT_ID = "uxtmgdenwfyuwhezcleh"
@@ -13,18 +12,6 @@ try:
 except Exception:
     st.error("Database Connection Failed.")
     st.stop()
-
-# --- NEW: UNIVERSAL LINK FIXER FUNCTION ---
-def fix_youtube_link(url):
-    """Silent background helper to ensure the player never breaks."""
-    if not url or not isinstance(url, str):
-        return url
-    # This pattern catches IDs from youtu.be, youtube.com/watch, shorts, etc.
-    match = re.search(r"(?:v=|\/|be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})", url)
-    if match:
-        video_id = match.group(1)
-        return f"https://www.youtube.com/embed/{video_id}"
-    return url
 
 # 2. UI CONFIG & FOOTER
 st.set_page_config(page_title="KIU Q10 Portal", layout="wide", page_icon="🎓")
@@ -86,7 +73,7 @@ if role == "Admin Dashboard":
                 supabase.table("materials").insert({
                     "course_program": target,
                     "course_name": str(row.get('Topic Covered', '')),
-                    "week": int(row.get('Week', 1)) if 'Week' in df.columns else _+1,
+                    "week": int(row.get('Week', 1)) if 'Week' in df.columns else 1,
                     "video_url": str(row.get('Embeddable YouTube Video Link', '')),
                     "notes_url": str(row.get('link to Google docs Document', ''))
                 }).execute()
@@ -115,10 +102,36 @@ elif role == "President Board":
 # --- STUDENT PORTAL ---
 elif role == "Student Portal":
     st.title("📖 Learning Modules")
-    search = st.text_input("🔍 Search for your Course").strip()
+    search = st.text_input("🔍 Search for your Course (e.g. 'Petroleum Engineering')").strip()
     
     if search:
         res = supabase.table("materials").select("*").ilike("course_program", f"%{search}%").order("week").execute()
         if res.data:
             for item in res.data:
-                with st.expander(f"📚 Week {item['
+                with st.expander(f"📚 Week {item['week']} - {item['course_name']}"):
+                    raw_url = str(item.get('video_url', ''))
+                    
+                    # 📽️ YOUTUBE EMBED LOGIC
+                    if "youtube.com" in raw_url or "youtu.be" in raw_url:
+                        # Force correct embed format
+                        v_id = raw_url.split("v=")[1].split("&")[0] if "v=" in raw_url else raw_url.split("/")[-1]
+                        embed_url = f"https://www.youtube.com/embed/{v_id}"
+                        
+                        st.markdown(f'<div class="video-container"><iframe src="{embed_url}" allowfullscreen></iframe></div>', unsafe_allow_html=True)
+                        st.link_button("📺 Watch on YouTube (If player says unavailable)", f"https://www.youtube.com/watch?v={v_id}")
+                    
+                    # 📊 GOOGLE SLIDES LOGIC
+                    elif "docs.google.com" in raw_url:
+                        st.info("Presentation Slides Available Below")
+                        slide_url = raw_url.replace("/edit", "/embed")
+                        st.markdown(f'<div class="video-container"><iframe src="{slide_url}"></iframe></div>', unsafe_allow_html=True)
+                        st.link_button("📂 View Full Slides", raw_url)
+
+                    if item.get('notes_url'):
+                        st.write("---")
+                        st.link_button("📝 Read Lecture Notes", item['notes_url'])
+        else:
+            st.info("Search for a course to view available weeks.")
+
+# 5. FIXED FOOTER
+st.markdown('<div class="footer">Built by KMT Dynamics</div>', unsafe_allow_html=True)
