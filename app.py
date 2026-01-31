@@ -10,10 +10,10 @@ SUPABASE_KEY = "sb_publishable_1BIwMEH8FVDv7fFafz31uA_9FqAJr0-"
 try:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 except Exception:
-    st.error("Connection error. Check database status.")
+    st.error("Database Connection Failed.")
     st.stop()
 
-# 2. UI CONFIG & FOOTER STYLING
+# 2. UI CONFIG & FOOTER
 st.set_page_config(page_title="KIU Q10 Portal", layout="wide", page_icon="🎓")
 
 st.markdown("""
@@ -24,7 +24,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. LOGIN GATE
+# 3. LOGIN PAGE
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
@@ -33,7 +33,7 @@ if not st.session_state.logged_in:
     col1, col2, col3 = st.columns([1,1.5,1])
     with col2:
         with st.container(border=True):
-            st.subheader("Login")
+            st.subheader("Login Access")
             st.text_input("Username")
             st.text_input("Password", type="password")
             if st.button("Login", use_container_width=True) or st.button("⏭️ Skip & Browse", use_container_width=True):
@@ -42,30 +42,30 @@ if not st.session_state.logged_in:
     st.markdown('<div class="footer">Built by KMT Dynamics</div>', unsafe_allow_html=True)
     st.stop()
 
-# 4. NAVIGATION
-role = st.sidebar.radio("Navigation:", ["Student Portal", "Admin Dashboard", "President Board"])
+# 4. SIDEBAR
+role = st.sidebar.radio("Navigation", ["Student Portal", "Admin Dashboard", "President Board"])
 
 # --- ADMIN DASHBOARD ---
 if role == "Admin Dashboard":
-    st.header("🛠 Admin Management")
-    t1, t2, t3 = st.tabs(["➕ Add Single", "📊 Bulk Upload", "🗑️ Manage Content"])
+    st.header("🛠 Management Console")
+    t1, t2, t3 = st.tabs(["➕ Add Entry", "📊 Bulk Upload", "🗑️ Delete Content"])
     
     with t1:
         with st.form("manual"):
             p = st.text_input("Course Name")
-            t = st.text_input("Topic")
-            w = st.number_input("Week", 1, 15)
-            y = st.text_input("Video/Slide Link")
+            t = st.text_input("Module Topic")
+            w = st.number_input("Week Number", 1, 15)
+            y = st.text_input("YouTube/Slide Link")
             n = st.text_input("Notes Link")
-            if st.form_submit_button("Save Entry"):
+            if st.form_submit_button("Save to Portal"):
                 supabase.table("materials").insert({"course_program": p, "course_name": t, "week": w, "video_url": y, "notes_url": n}).execute()
-                st.success("Saved!")
+                st.success("Module saved successfully!")
 
     with t2:
-        target = st.text_input("Course Name (e.g., Petroleum Engineering)")
-        wipe = st.checkbox("Wipe existing data for this course name first?")
-        f = st.file_uploader("Upload File", type=["xlsx", "csv"])
-        if f and target and st.button("🚀 Push to Cloud"):
+        target = st.text_input("Target Course Name (e.g. Petroleum Engineering)")
+        wipe = st.checkbox("Wipe current data for this course before upload?")
+        f = st.file_uploader("Upload CSV/Excel", type=["xlsx", "csv"])
+        if f and target and st.button("🚀 Start Bulk Upload"):
             if wipe: supabase.table("materials").delete().eq("course_program", target).execute()
             df = pd.read_excel(f) if "xlsx" in f.name else pd.read_csv(f)
             df.columns = [str(c).strip() for c in df.columns]
@@ -77,31 +77,32 @@ if role == "Admin Dashboard":
                     "video_url": str(row.get('Embeddable YouTube Video Link', '')),
                     "notes_url": str(row.get('link to Google docs Document', ''))
                 }).execute()
-            st.success("Upload Successful!")
+            st.success("Bulk Upload Finished!")
 
     with t3:
         data = supabase.table("materials").select("*").execute()
-        for item in data.data:
-            c1, c2 = st.columns([4, 1])
-            c1.write(f"**{item['course_program']}** | Week {item['week']}: {item['course_name']}")
-            if c2.button("🗑️ Delete", key=f"del_{item['id']}"):
-                supabase.table("materials").delete().eq("id", item['id']).execute()
-                st.rerun()
+        if data.data:
+            for item in data.data:
+                c1, c2 = st.columns([4, 1])
+                c1.write(f"**{item['course_program']}** | Wk {item['week']}: {item['course_name']}")
+                if c2.button("🗑️ Delete", key=f"del_{item['id']}"):
+                    supabase.table("materials").delete().eq("id", item['id']).execute()
+                    st.rerun()
 
 # --- PRESIDENT BOARD ---
 elif role == "President Board":
-    st.header("📢 Post Notice")
-    with st.form("p"):
-        tt = st.text_input("Title")
-        mm = st.text_area("Message")
-        if st.form_submit_button("Post"):
+    st.header("📢 Post Announcements")
+    with st.form("notice"):
+        tt = st.text_input("Notice Title")
+        mm = st.text_area("Detailed Message")
+        if st.form_submit_button("Publish Now"):
             supabase.table("notices").insert({"title": tt, "content": mm}).execute()
-            st.success("Posted!")
+            st.success("Notice published to all students!")
 
 # --- STUDENT PORTAL ---
 elif role == "Student Portal":
-    st.title("📖 Course Materials")
-    search = st.text_input("🔍 Search Course (e.g. 'Petroleum Engineering')").strip()
+    st.title("📖 Learning Modules")
+    search = st.text_input("🔍 Search for your Course (e.g. 'Petroleum Engineering')").strip()
     
     if search:
         res = supabase.table("materials").select("*").ilike("course_program", f"%{search}%").order("week").execute()
@@ -110,26 +111,27 @@ elif role == "Student Portal":
                 with st.expander(f"📚 Week {item['week']} - {item['course_name']}"):
                     raw_url = str(item.get('video_url', ''))
                     
-                    # 📽️ YOUTUBE HANDLING
+                    # 📽️ YOUTUBE EMBED LOGIC
                     if "youtube.com" in raw_url or "youtu.be" in raw_url:
-                        # Extract Video ID and force Embed format
-                        if "v=" in raw_url:
-                            v_id = raw_url.split("v=")[1].split("&")[0]
-                        else:
-                            v_id = raw_url.split("/")[-1]
-                        
+                        # Force correct embed format
+                        v_id = raw_url.split("v=")[1].split("&")[0] if "v=" in raw_url else raw_url.split("/")[-1]
                         embed_url = f"https://www.youtube.com/embed/{v_id}"
                         
                         st.markdown(f'<div class="video-container"><iframe src="{embed_url}" allowfullscreen></iframe></div>', unsafe_allow_html=True)
-                        st.link_button("📺 Watch on YouTube (If embed shows error)", f"https://www.youtube.com/watch?v={v_id}")
+                        st.link_button("📺 Watch on YouTube (If player says unavailable)", f"https://www.youtube.com/watch?v={v_id}")
                     
-                    # 📊 GOOGLE SLIDES HANDLING
+                    # 📊 GOOGLE SLIDES LOGIC
                     elif "docs.google.com" in raw_url:
-                        st.info("No video available. Loading Presentation Slides...")
+                        st.info("Presentation Slides Available Below")
                         slide_url = raw_url.replace("/edit", "/embed")
                         st.markdown(f'<div class="video-container"><iframe src="{slide_url}"></iframe></div>', unsafe_allow_html=True)
-                        st.link_button("📂 Open Original Slides", raw_url)
+                        st.link_button("📂 View Full Slides", raw_url)
 
                     if item.get('notes_url'):
                         st.write("---")
-                        st
+                        st.link_button("📝 Read Lecture Notes", item['notes_url'])
+        else:
+            st.info("Search for a course to view available weeks.")
+
+# 5. FIXED FOOTER
+st.markdown('<div class="footer">Built by KMT Dynamics</div>', unsafe_allow_html=True)
