@@ -2,8 +2,7 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client
 
-# 1. HARD-WIRED CONNECTION (No Secrets Required)
-# ---------------------------------------------------------
+# 1. CONNECTION
 PROJECT_ID = "uxtmgdenwfyuwhezcleh"
 SUPABASE_URL = f"https://{PROJECT_ID}.supabase.co"
 SUPABASE_KEY = "sb_publishable_1BIwMEH8FVDv7fFafz31uA_9FqAJr0-" 
@@ -11,121 +10,115 @@ SUPABASE_KEY = "sb_publishable_1BIwMEH8FVDv7fFafz31uA_9FqAJr0-"
 try:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 except Exception as e:
-    st.error(f"Setup Error: {e}")
+    st.error("Connection error.")
     st.stop()
-# ---------------------------------------------------------
 
-# 2. UI BRANDING & LAYOUT
+# 2. UI THEME
 st.set_page_config(page_title="KIU Q10 Portal", layout="wide", page_icon="🎓")
 
-# Custom CSS for a cleaner look
-st.markdown("""
-    <style>
-    .main { background-color: #f5f7f9; }
-    .stButton>button { width: 100%; border-radius: 5px; }
-    </style>
-    """, unsafe_allow_html=True)
+# 3. LOGIN PAGE (Skipable)
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 
-st.sidebar.title("🎓 KIU Q10 Portal")
-role = st.sidebar.radio("Identify Your Role:", ["Student", "President", "Admin"])
+if not st.session_state.logged_in:
+    st.markdown("<h1 style='text-align: center;'>🎓 ❤️ KIU Q10 Portal</h1>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        with st.container(border=True):
+            st.subheader("Sign In")
+            st.text_input("Username")
+            st.text_input("Password", type="password")
+            if st.button("Login", use_container_width=True):
+                st.session_state.logged_in = True
+                st.rerun()
+            if st.button("⏭️ Skip & Browse", use_container_width=True):
+                st.session_state.logged_in = True
+                st.rerun()
+    st.stop()
 
-# --- ADMIN VIEW (The Tabbed UI you liked) ---
-if role == "Admin":
-    st.header("🛠 Global Admin Dashboard")
-    st.info("Manage course content and bulk uploads here.")
-    
-    tab_single, tab_bulk = st.tabs(["➕ Single Entry", "📊 Bulk Excel Upload"])
+# 4. SIDEBAR
+st.sidebar.title("❤️ KIU Portal")
+role = st.sidebar.radio("Role Selection:", ["Student Portal", "Admin Dashboard", "President Board"])
+
+# --- ADMIN DASHBOARD ---
+if role == "Admin Dashboard":
+    st.header("🛠 Global Admin Control")
+    tab_single, tab_bulk, tab_manage = st.tabs(["➕ Add Single", "📊 Bulk Upload", "🗑️ Manage/Delete"])
     
     with tab_single:
-        with st.form("admin_upload"):
-            st.subheader("Add Single Course Module")
-            c_name = st.text_input("Topic Covered (e.g., Atomic Structure)")
-            week = st.number_input("Week Number", 1, 15, value=1)
-            v_url = st.text_input("YouTube Video URL")
-            n_url = st.text_input("Google Docs / Notes URL")
-            
-            if st.form_submit_button("🚀 Save to Database"):
-                if c_name:
-                    try:
-                        supabase.table("materials").insert({
-                            "course_name": c_name, "week": week, 
-                            "video_url": v_url, "notes_url": n_url
-                        }).execute()
-                        st.success(f"✅ Successfully added: {c_name}")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+        with st.form("admin_form"):
+            prog = st.text_input("Course Name (e.g., Mechanical Engineering)")
+            topic = st.text_input("Topic Covered")
+            wk = st.number_input("Week", 1, 15)
+            yt = st.text_input("YouTube Embed Link")
+            nt = st.text_input("Notes Link")
+            if st.form_submit_button("Save Entry"):
+                supabase.table("materials").insert({
+                    "course_program": prog, "course_name": topic, "week": wk, "video_url": yt, "notes_url": nt
+                }).execute()
+                st.success("Entry Saved!")
 
     with tab_bulk:
-        st.subheader("📊 Bulk Import from Excel")
-        st.write("I will map your columns automatically.")
-        uploaded_file = st.file_uploader("Upload Course Excel", type=["xlsx"])
+        st.subheader("📊 Bulk Upload")
+        prog_target = st.text_input("Target Course Name")
+        replace_mode = st.checkbox("🔥 Wipe existing data for this course before uploading?")
+        uploaded_file = st.file_uploader("Choose File", type=["xlsx", "csv"])
         
-        if uploaded_file:
-            df = pd.read_excel(uploaded_file)
-            df.columns = [str(c).strip() for c in df.columns] # Clean hidden spaces
-            st.dataframe(df.head(3)) # Preview
+        if uploaded_file and prog_target and st.button("🚀 Process Upload"):
+            if replace_mode:
+                supabase.table("materials").delete().eq("course_program", prog_target).execute()
             
-            if st.button("🔥 Push All Data to Cloud"):
-                with st.spinner("Processing rows..."):
-                    success_count = 0
-                    for _, row in df.iterrows():
-                        try:
-                            # Mapping based on your specific spreadsheet columns
-                            payload = {
-                                "course_name": str(row.get('Topic Covered', row.get('title', 'Unnamed'))),
-                                "week": int(row.get('Week', 1)) if pd.notna(row.get('Week')) else 1,
-                                "video_url": str(row.get('Embeddable YouTube Video Link', row.get('YouTube link', ''))),
-                                "notes_url": str(row.get('link to Google docs Document', row.get('link', '')))
-                            }
-                            supabase.table("materials").insert(payload).execute()
-                            success_count += 1
-                        except:
-                            continue
-                st.success(f"✅ Uploaded {success_count} rows successfully!")
+            df = pd.read_excel(uploaded_file) if "xlsx" in uploaded_file.name else pd.read_csv(uploaded_file)
+            df.columns = [str(c).strip() for c in df.columns]
+            for _, row in df.iterrows():
+                supabase.table("materials").insert({
+                    "course_program": prog_target,
+                    "course_name": str(row.get('Topic Covered', '')),
+                    "week": int(row.get('Week', 1)) if 'Week' in df.columns else 1,
+                    "video_url": str(row.get('Embeddable YouTube Video Link', '')),
+                    "notes_url": str(row.get('link to Google docs Document', ''))
+                }).execute()
+            st.success(f"Uploaded to {prog_target}!")
 
-# --- PRESIDENT VIEW ---
-elif role == "President":
-    st.header("📢 President's Notice Board")
-    with st.form("post_notice"):
-        title = st.text_input("Notice Title")
-        content = st.text_area("Announcement Details")
-        if st.form_submit_button("📢 Post to Student Portal"):
-            try:
-                supabase.table("notices").insert({"title": title, "content": content}).execute()
-                st.success("Announcement is now live!")
-            except Exception as e:
-                st.error(f"Check if 'notices' table exists: {e}")
-
-# --- STUDENT VIEW (The Expander UI you liked) ---
-elif role == "Student":
-    st.title("📚 KIU Student Portal")
-    
-    # 1. Announcements Section
-    try:
-        notices = supabase.table("notices").select("*").order("created_at", desc=True).execute()
-        if notices.data:
-            with st.container():
-                st.subheader("🔔 Latest Notices")
-                for n in notices.data[:2]: # Show last 2 notices
-                    st.info(f"**{n['title']}**: {n['content']}")
-                st.divider()
-    except:
-        pass
-
-    # 2. Materials Section
-    try:
-        res = supabase.table("materials").select("*").order("week").execute()
-        if res.data:
-            st.subheader("📖 Course Modules")
-            for item in res.data:
-                # Grouped by Week in Expanders
-                with st.expander(f"Week {item['week']} - {item['course_name']}"):
-                    c1, c2 = st.columns(2)
-                    if item.get('video_url'): 
-                        c1.link_button("📺 Watch Lecture", item['video_url'])
-                    if item.get('notes_url'): 
-                        c2.link_button("📝 Read Notes", item['notes_url'])
+    with tab_manage:
+        st.subheader("🗑️ Delete Course Materials")
+        all_data = supabase.table("materials").select("*").execute()
+        if all_data.data:
+            m_df = pd.DataFrame(all_data.data)
+            for _, row in m_df.iterrows():
+                col1, col2, col3 = st.columns([3, 1, 1])
+                col1.write(f"**{row['course_program']}** - Wk {row['week']}: {row['course_name']}")
+                if col2.button("🗑️ Delete", key=f"del_{row['id']}"):
+                    supabase.table("materials").delete().eq("id", row['id']).execute()
+                    st.rerun()
         else:
-            st.info("No materials available yet. Please check back later.")
-    except Exception as e:
-        st.error(f"Database Error: {e}")
+            st.info("No materials found to manage.")
+
+# --- PRESIDENT BOARD ---
+elif role == "President Board":
+    st.header("📢 Post Announcement")
+    with st.form("p_form"):
+        title = st.text_input("Title")
+        msg = st.text_area("Message")
+        if st.form_submit_button("Post"):
+            supabase.table("notices").insert({"title": title, "content": msg}).execute()
+            st.success("Posted!")
+
+# --- STUDENT PORTAL ---
+elif role == "Student Portal":
+    st.markdown("<h1>🎓 Student Learning Portal</h1>", unsafe_allow_html=True)
+    search = st.text_input("🔍 Search for your Course (e.g. 'Mechanical Engineering')", "").strip()
+    
+    if search:
+        res = supabase.table("materials").select("*").ilike("course_program", f"%{search}%").order("week").execute()
+        if res.data:
+            for item in res.data:
+                with st.expander(f"❤️ Week {item['week']} - {item['course_name']}"):
+                    if item.get('video_url'):
+                        st.video(item['video_url'])
+                    if item.get('notes_url'):
+                        st.link_button("📝 Open Notes", item['notes_url'])
+        else:
+            st.warning("No content found. Check spelling or ask Admin to upload.")
+    else:
+        st.info("Type your course name above to browse.")
