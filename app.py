@@ -19,12 +19,12 @@ st.set_page_config(page_title="KIU Q10 Portal", layout="wide", page_icon="🎓")
 st.markdown("""
     <style>
     .footer { position: fixed; left: 0; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #666; font-size: 14px; background: white; border-top: 1px solid #eee; z-index: 999; }
-    .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; border-radius: 8px; }
+    .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; border-radius: 8px; margin-bottom: 10px; }
     .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. LOGIN PAGE
+# 3. LOGIN GATE
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
@@ -48,7 +48,7 @@ role = st.sidebar.radio("Navigation:", ["Student Portal", "Admin Dashboard", "Pr
 # --- ADMIN DASHBOARD ---
 if role == "Admin Dashboard":
     st.header("🛠 Admin Management")
-    t1, t2, t3 = st.tabs(["➕ Add Single", "📊 Bulk Upload", "🗑️ Manage"])
+    t1, t2, t3 = st.tabs(["➕ Add Single", "📊 Bulk Upload", "🗑️ Manage Content"])
     
     with t1:
         with st.form("manual"):
@@ -62,8 +62,8 @@ if role == "Admin Dashboard":
                 st.success("Saved!")
 
     with t2:
-        target = st.text_input("Assign to Course (e.g., Petroleum Engineering)")
-        wipe = st.checkbox("Wipe existing data for this course?")
+        target = st.text_input("Course Name (e.g., Petroleum Engineering)")
+        wipe = st.checkbox("Wipe existing data for this course name first?")
         f = st.file_uploader("Upload File", type=["xlsx", "csv"])
         if f and target and st.button("🚀 Push to Cloud"):
             if wipe: supabase.table("materials").delete().eq("course_program", target).execute()
@@ -83,7 +83,7 @@ if role == "Admin Dashboard":
         data = supabase.table("materials").select("*").execute()
         for item in data.data:
             c1, c2 = st.columns([4, 1])
-            c1.write(f"**{item['course_program']}** | Wk {item['week']}: {item['course_name']}")
+            c1.write(f"**{item['course_program']}** | Week {item['week']}: {item['course_name']}")
             if c2.button("🗑️ Delete", key=f"del_{item['id']}"):
                 supabase.table("materials").delete().eq("id", item['id']).execute()
                 st.rerun()
@@ -108,29 +108,28 @@ elif role == "Student Portal":
         if res.data:
             for item in res.data:
                 with st.expander(f"📚 Week {item['week']} - {item['course_name']}"):
-                    url = str(item.get('video_url', ''))
+                    raw_url = str(item.get('video_url', ''))
                     
-                    if "youtube.com" in url or "youtu.be" in url:
-                        # Convert to Embed format automatically
-                        v_id = url.split("v=")[1].split("&")[0] if "v=" in url else url.split("/")[-1]
+                    # 📽️ YOUTUBE HANDLING
+                    if "youtube.com" in raw_url or "youtu.be" in raw_url:
+                        # Extract Video ID and force Embed format
+                        if "v=" in raw_url:
+                            v_id = raw_url.split("v=")[1].split("&")[0]
+                        else:
+                            v_id = raw_url.split("/")[-1]
+                        
                         embed_url = f"https://www.youtube.com/embed/{v_id}"
                         
-                        # Embed Player
                         st.markdown(f'<div class="video-container"><iframe src="{embed_url}" allowfullscreen></iframe></div>', unsafe_allow_html=True)
-                        # BACKUP BUTTON (Fixes "Unavailable" issue)
-                        st.link_button("📺 Watch Video directly on YouTube", url)
+                        st.link_button("📺 Watch on YouTube (If embed shows error)", f"https://www.youtube.com/watch?v={v_id}")
                     
-                    elif "docs.google.com" in url:
-                        st.info("Module Presentation Available")
-                        slide_url = url.replace("/edit", "/embed")
+                    # 📊 GOOGLE SLIDES HANDLING
+                    elif "docs.google.com" in raw_url:
+                        st.info("No video available. Loading Presentation Slides...")
+                        slide_url = raw_url.replace("/edit", "/embed")
                         st.markdown(f'<div class="video-container"><iframe src="{slide_url}"></iframe></div>', unsafe_allow_html=True)
-                        st.link_button("📂 Open Presentation", url)
+                        st.link_button("📂 Open Original Slides", raw_url)
 
                     if item.get('notes_url'):
                         st.write("---")
-                        st.link_button("📝 Read Full Notes", item['notes_url'])
-        else:
-            st.info("No materials found.")
-
-# 5. FOOTER
-st.markdown('<div class="footer">Built by KMT Dynamics</div>', unsafe_allow_html=True)
+                        st
