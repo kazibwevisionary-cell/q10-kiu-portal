@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client
 
-# 1. CONNECTION
+# 1. CONNECTION SETUP
 PROJECT_ID = "uxtmgdenwfyuwhezcleh"
 SUPABASE_URL = f"https://{PROJECT_ID}.supabase.co"
 SUPABASE_KEY = "sb_publishable_1BIwMEH8FVDv7fFafz31uA_9FqAJr0-" 
@@ -10,40 +10,59 @@ SUPABASE_KEY = "sb_publishable_1BIwMEH8FVDv7fFafz31uA_9FqAJr0-"
 try:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 except Exception as e:
-    st.error("Connection error.")
+    st.error("Connection error. Check your network.")
     st.stop()
 
-# 2. UI THEME
+# 2. UI THEME & BRANDING
 st.set_page_config(page_title="KIU Q10 Portal", layout="wide", page_icon="🎓")
+
+# Custom CSS for the footer and styling
+st.markdown("""
+    <style>
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: transparent;
+        color: #6c757d;
+        text-align: center;
+        padding: 10px;
+        font-size: 14px;
+        letter-spacing: 1px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # 3. LOGIN PAGE (Skipable)
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center;'>🎓 ❤️ KIU Q10 Portal</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>🎓 KIU Q10 Portal</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         with st.container(border=True):
-            st.subheader("Sign In")
+            st.subheader("Portal Login")
             st.text_input("Username")
             st.text_input("Password", type="password")
             if st.button("Login", use_container_width=True):
                 st.session_state.logged_in = True
                 st.rerun()
-            if st.button("⏭️ Skip & Browse", use_container_width=True):
+            if st.button("⏭️ Skip & Browse Courses", use_container_width=True):
                 st.session_state.logged_in = True
                 st.rerun()
+    st.markdown('<div class="footer">Built by KMT Dynamics</div>', unsafe_allow_html=True)
     st.stop()
 
-# 4. SIDEBAR
-st.sidebar.title("❤️ KIU Portal")
+# 4. SIDEBAR NAVIGATION
+st.sidebar.title("🎓 KIU Portal")
 role = st.sidebar.radio("Role Selection:", ["Student Portal", "Admin Dashboard", "President Board"])
 
 # --- ADMIN DASHBOARD ---
 if role == "Admin Dashboard":
     st.header("🛠 Global Admin Control")
-    tab_single, tab_bulk, tab_manage = st.tabs(["➕ Add Single", "📊 Bulk Upload", "🗑️ Manage/Delete"])
+    tab_single, tab_bulk, tab_manage = st.tabs(["➕ Add Single", "📊 Bulk Upload", "🗑️ Manage Content"])
     
     with tab_single:
         with st.form("admin_form"):
@@ -84,12 +103,11 @@ if role == "Admin Dashboard":
         st.subheader("🗑️ Delete Course Materials")
         all_data = supabase.table("materials").select("*").execute()
         if all_data.data:
-            m_df = pd.DataFrame(all_data.data)
-            for _, row in m_df.iterrows():
-                col1, col2, col3 = st.columns([3, 1, 1])
-                col1.write(f"**{row['course_program']}** - Wk {row['week']}: {row['course_name']}")
-                if col2.button("🗑️ Delete", key=f"del_{row['id']}"):
-                    supabase.table("materials").delete().eq("id", row['id']).execute()
+            for item in all_data.data:
+                col1, col2 = st.columns([4, 1])
+                col1.write(f"**{item['course_program']}** - Wk {item['week']}: {item['course_name']}")
+                if col2.button("🗑️ Delete", key=f"del_{item['id']}"):
+                    supabase.table("materials").delete().eq("id", item['id']).execute()
                     st.rerun()
         else:
             st.info("No materials found to manage.")
@@ -102,7 +120,7 @@ elif role == "President Board":
         msg = st.text_area("Message")
         if st.form_submit_button("Post"):
             supabase.table("notices").insert({"title": title, "content": msg}).execute()
-            st.success("Posted!")
+            st.success("Announcement live!")
 
 # --- STUDENT PORTAL ---
 elif role == "Student Portal":
@@ -113,12 +131,15 @@ elif role == "Student Portal":
         res = supabase.table("materials").select("*").ilike("course_program", f"%{search}%").order("week").execute()
         if res.data:
             for item in res.data:
-                with st.expander(f"❤️ Week {item['week']} - {item['course_name']}"):
+                with st.expander(f"📖 Week {item['week']} - {item['course_name']}"):
                     if item.get('video_url'):
                         st.video(item['video_url'])
                     if item.get('notes_url'):
                         st.link_button("📝 Open Notes", item['notes_url'])
         else:
-            st.warning("No content found. Check spelling or ask Admin to upload.")
+            st.warning("No content found. Please check spelling or contact Admin.")
     else:
-        st.info("Type your course name above to browse.")
+        st.info("Please enter your course name above to view modules.")
+
+# 5. FOOTER
+st.markdown('<div class="footer">Built by KMT Dynamics</div>', unsafe_allow_html=True)
