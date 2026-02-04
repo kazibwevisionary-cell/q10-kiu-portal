@@ -15,15 +15,16 @@ except Exception:
     st.error("Database Connection Failed.")
     st.stop()
 
-# HELPER: Convert Uploaded Image to Base64 for CSS/Database
+# HELPER: Convert Image to Base64
 def img_to_base64(image_file):
     if image_file is not None:
-        buffered = BytesIO(image_file.read())
-        return base64.b64encode(buffered.getvalue()).decode()
+        return base64.b64encode(image_file.getvalue()).decode()
     return None
 
-# 2. UI CONFIG & DYNAMIC STYLING
-# We check if a custom background exists in the session or DB (simplified here to session)
+# 2. UI CONFIG & STYLE
+st.set_page_config(page_title="Flux", layout="wide")
+
+# Persistent Background Check
 bg_img = st.session_state.get("login_bg", "")
 
 st.markdown(f"""
@@ -38,77 +39,65 @@ st.markdown(f"""
 
     .main-title {{
         font-family: 'Comic Neue', 'Comic Sans MS', cursive;
-        font-size: 36px !important;
+        font-size: 32px !important;
         color: #333;
         text-align: center;
-        margin: 10px 0;
-        background: rgba(255,255,255,0.7);
-        border-radius: 10px;
-        display: inline-block;
-        padding: 0 20px;
+        margin-bottom: 20px;
     }}
     
-    /* Full-cover Course Tiles */
-    .course-tile-container {{
+    .admin-header {{ font-size: 16px !important; font-weight: bold; color: #666; }}
+
+    /* Course Tile with Full Cover Image */
+    .course-tile {{
         position: relative;
-        width: 100%;
-        height: 200px;
-        border-radius: 15px;
+        height: 220px;
+        border-radius: 12px;
         overflow: hidden;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 10px;
+        border: 1px solid #eee;
     }}
-    .tile-image {{
+    .tile-img {{
         width: 100%;
         height: 100%;
         object-fit: cover;
     }}
-    .tile-overlay {{
+    .tile-label {{
         position: absolute;
         bottom: 0;
         width: 100%;
-        background: rgba(0,0,0,0.6);
+        background: rgba(0,0,0,0.65);
         color: white;
-        padding: 10px;
+        padding: 8px;
         text-align: center;
         font-family: 'Comic Neue', cursive;
     }}
-
-    .admin-header {{ font-size: 18px !important; font-weight: bold; color: #555; }}
-    .footer {{ position: fixed; left: 0; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #666; font-size: 14px; background: rgba(255,255,255,0.8); border-top: 1px solid #eee; z-index: 999; }}
+    .footer {{ position: fixed; left: 0; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #666; font-size: 14px; background: rgba(255,255,255,0.8); z-index: 999; }}
     </style>
     """, unsafe_allow_html=True)
 
-# 3. AUTHENTICATION (SIGN UP & LOGIN)
+# 3. AUTH & REGISTRATION
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.markdown("<center><div class='main-title'>Flux</div></center>", unsafe_allow_html=True)
-    tab_login, tab_signup = st.tabs(["🔐 Login", "📝 Sign Up"])
+    st.markdown("<div class='main-title'>Flux</div>", unsafe_allow_html=True)
+    t_log, t_reg = st.tabs(["Login", "Sign Up"])
     
-    with tab_login:
-        col1, col2, col3 = st.columns([1,1.5,1])
-        with col2:
-            with st.container(border=True):
-                st.text_input("Username", key="l_u")
-                st.text_input("Password", type="password", key="l_p")
-                if st.button("Login", use_container_width=True):
-                    st.session_state.logged_in = True
-                    st.rerun()
-                st.button("Skip to Browse", on_click=lambda: st.session_state.update({"logged_in": True}))
+    with t_log:
+        with st.container(border=True):
+            st.text_input("Username")
+            st.text_input("Password", type="password")
+            if st.button("Enter Flux", use_container_width=True):
+                st.session_state.logged_in = True
+                st.rerun()
 
-    with tab_signup:
-        col1, col2, col3 = st.columns([1,1.5,1])
-        with col2:
-            with st.container(border=True):
-                st.subheader("New Student Registration")
-                st.text_input("Full Name")
-                st.text_input("Email")
-                st.text_input("Major")
-                st.text_area("Interests (Keywords)")
-                if st.button("Register Account", use_container_width=True):
-                    st.success("Registered!")
+    with t_reg:
+        with st.container(border=True):
+            st.text_input("Full Name")
+            st.text_input("Major/Course")
+            st.text_area("What are your interests? (Keywords)")
+            if st.button("Create Account", use_container_width=True):
+                st.success("Registration complete!")
     st.stop()
 
 # 4. SIDEBAR
@@ -118,67 +107,87 @@ role = st.sidebar.radio("Navigation", ["Student Portal", "Admin Dashboard", "Pre
 if role == "Admin Dashboard":
     st.markdown("<p class='admin-header'>Course Creation Console</p>", unsafe_allow_html=True)
     if st.text_input("Admin Password", type="password") == "flux":
-        t1, t2, t3, t4 = st.tabs(["🚀 New Course Creator", "➕ Manual Entry", "🗑️ Manage Content", "🎨 Portal Branding"])
+        tabs = st.tabs(["🚀 New Course", "🗑️ Delete Content", "🎨 Portal Branding"])
         
-        with t1:
-            st.write("### Structured Course Upload")
-            c_name = st.text_input("Course Program Name")
-            tags = st.text_input("Search Keywords")
-            # Uploading directly from device
-            c_img_file = st.file_uploader("Upload Course Cover Image", type=['png', 'jpg', 'jpeg'])
-            f = st.file_uploader("Upload Excel Content", type=["xlsx", "csv"])
+        with tabs[0]:
+            c_name = st.text_input("Course Name")
+            tags = st.text_input("Keywords (for search)")
+            c_img = st.file_uploader("Upload Tile Cover", type=['jpg','png'])
+            f_content = st.file_uploader("Upload Content (Excel)", type=['xlsx','csv'])
             
-            if st.button("Generate Course"):
-                if c_name and f and c_img_file:
-                    b64_img = img_to_base64(c_img_file)
-                    df = pd.read_excel(f) if "xlsx" in f.name else pd.read_csv(f)
+            if st.button("Create Course"):
+                if c_name and f_content:
+                    b64_img = img_to_base64(c_img) if c_img else ""
+                    df = pd.read_excel(f_content) if "xlsx" in f_content.name else pd.read_csv(f_content)
+                    
                     for idx, row in df.iterrows():
-                        supabase.table("materials").insert({
-                            "course_program": c_name,
-                            "course_name": str(row.get('Topic Covered', f"Module {idx+1}")),
-                            "week": idx + 1,
-                            "video_url": str(row.get('Embeddable YouTube Video Link', '')),
-                            "notes_url": str(row.get('link to Google docs Document', '')),
-                            "image_url": f"data:image/png;base64,{b64_img}",
-                            "keywords": tags
-                        }).execute()
-                    st.success("Course Created with Custom Cover!")
+                        try:
+                            supabase.table("materials").insert({
+                                "course_program": c_name,
+                                "course_name": str(row.get('Topic Covered', f'Module {idx+1}')),
+                                "week": idx + 1,
+                                "video_url": str(row.get('Embeddable YouTube Video Link', '')),
+                                "notes_url": str(row.get('link to Google docs Document', '')),
+                                "image_url": f"data:image/png;base64,{b64_img}" if b64_img else None,
+                                "keywords": tags
+                            }).execute()
+                        except Exception as e:
+                            st.error(f"Error at row {idx}: Column 'keywords' or 'image_url' might be missing in Supabase.")
+                            break
+                    st.success("Course Created!")
 
-        with t4:
-            st.write("### Adjust Portal Background")
-            bg_file = st.file_uploader("Upload Login/Signup Background Image", type=['png', 'jpg', 'jpeg'])
-            if st.button("Apply New Background"):
-                if bg_file:
-                    st.session_state.login_bg = img_to_base64(bg_file)
-                    st.success("Background Updated!")
-                    st.rerun()
+        with tabs[1]:
+            # Old delete functionality preserved
+            data = supabase.table("materials").select("*").execute()
+            if data.data:
+                for item in data.data:
+                    c1, c2 = st.columns([5,1])
+                    c1.write(f"{item['course_program']} - {item['course_name']}")
+                    if c2.button("Delete", key=item['id']):
+                        supabase.table("materials").delete().eq("id", item['id']).execute()
+                        st.rerun()
 
-        # ... (Manual Entry and Manage Content Tabs remain as before)
+        with tabs[2]:
+            st.write("### Change Login Background")
+            bg_file = st.file_uploader("Choose Background Image", type=['jpg','png'])
+            if st.button("Apply Background"):
+                st.session_state.login_bg = img_to_base64(bg_file)
+                st.rerun()
 
 # --- STUDENT PORTAL ---
 elif role == "Student Portal":
     st.markdown("<div class='main-title'>Flux</div>", unsafe_allow_html=True)
-    query = st.text_input("Search by Course, Keyword, or Topic").strip()
+    query = st.text_input("Search for courses or topics").strip()
     
     if not query:
         st.subheader("Explore Courses")
-        tiles_data = supabase.table("materials").select("course_program, image_url").execute()
-        if tiles_data.data:
-            unique_courses = {item['course_program']: item.get('image_url') for item in tiles_data.data}
-            cols = st.columns(3)
-            for idx, (c_name, c_img) in enumerate(unique_courses.items()):
-                with cols[idx % 3]:
-                    # Full cover tile styling
+        res = supabase.table("materials").select("course_program, image_url").execute()
+        if res.data:
+            unique_courses = {i['course_program']: i.get('image_url') for i in res.data}
+            cols = st.columns(4)
+            for idx, (name, img) in enumerate(unique_courses.items()):
+                with cols[idx % 4]:
                     st.markdown(f"""
-                        <div class="course-tile-container">
-                            <img src="{c_img if c_img else 'https://via.placeholder.com/400'}" class="tile-image">
-                            <div class="tile-overlay">{c_name}</div>
+                        <div class="course-tile">
+                            <img src="{img if img else 'https://via.placeholder.com/300'}" class="tile-img">
+                            <div class="tile-label">{name}</div>
                         </div>
                     """, unsafe_allow_html=True)
-                    if st.button(f"Open {c_name}", key=f"v_{idx}", use_container_width=True):
-                        st.session_state.search_trigger = c_name
+                    if st.button("Open", key=f"btn_{idx}", use_container_width=True):
+                        st.session_state.search_trigger = name
                         st.rerun()
 
-    # ... (Search Results logic remains as before)
+    final_q = st.session_state.get('search_trigger', query)
+    if final_q:
+        if 'search_trigger' in st.session_state: del st.session_state.search_trigger
+        # Enhanced search looks at program, topic, and keywords
+        res = supabase.table("materials").select("*").or_(
+            f"course_program.ilike.%{final_q}%,keywords.ilike.%{final_q}%,course_name.ilike.%{final_q}%"
+        ).order("week").execute()
+        
+        for item in res.data:
+            with st.expander(f"Module {item['week']} - {item['course_name']}"):
+                if item.get('video_url'): st.video(item['video_url'])
+                if item.get('notes_url'): st.link_button("Notes", item['notes_url'])
 
 st.markdown('<div class="footer">Built by KMT Dynamics | Flux</div>', unsafe_allow_html=True)
