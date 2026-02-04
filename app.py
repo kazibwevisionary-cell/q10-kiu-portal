@@ -22,9 +22,10 @@ st.markdown("""
     .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; border-radius: 8px; margin-bottom: 10px; }
     .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
     .course-tile { border: 1px solid #ddd; border-radius: 10px; padding: 10px; margin-bottom: 20px; text-align: center; }
-    /* Reduced Title Size */
-    h1 { font-size: 24px !important; }
-    h2 { font-size: 20px !important; }
+    /* Reduced Title Size as requested */
+    h1 { font-size: 22px !important; font-weight: 600; }
+    h2 { font-size: 18px !important; }
+    h3 { font-size: 16px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -58,10 +59,10 @@ if role == "Admin Dashboard":
         with st.form("manual"):
             p = st.text_input("Course Name (Program)")
             t = st.text_input("Module Topic")
-            w = st.number_input("Week Number", 1, 15)
+            w = st.number_input("Module Number", 1, 50) # Changed from Week to Module
             y = st.text_input("YouTube/Slide Link")
             n = st.text_input("Notes Link")
-            img = st.text_input("Course Image URL")
+            img = st.text_input("Course Cover Image URL")
             if st.form_submit_button("Save to Flux"):
                 supabase.table("materials").insert({
                     "course_program": p, "course_name": t, "week": w, 
@@ -81,7 +82,7 @@ if role == "Admin Dashboard":
                 supabase.table("materials").insert({
                     "course_program": target,
                     "course_name": str(row.get('Topic Covered', '')),
-                    "week": int(row.get('Week', 1)),
+                    "week": int(row.get('Module', row.get('Week', 1))), # Checks for 'Module' or 'Week' column
                     "video_url": str(row.get('Embeddable YouTube Video Link', '')),
                     "notes_url": str(row.get('link to Google docs Document', '')),
                     "image_url": target_img
@@ -100,10 +101,8 @@ elif role == "Student Portal":
     if not search_query:
         st.subheader("Explore Courses")
         try:
-            # Added image_url but wrapped in try/except in case column doesn't exist yet
             tiles_data = supabase.table("materials").select("course_program, image_url").execute()
             if tiles_data.data:
-                # Get unique programs and their images
                 unique_courses = {}
                 for item in tiles_data.data:
                     if item['course_program'] not in unique_courses:
@@ -116,14 +115,13 @@ elif role == "Student Portal":
                             if c_img:
                                 st.image(c_img, use_container_width=True)
                             else:
-                                st.image("https://via.placeholder.com/300x200?text=No+Image", use_container_width=True)
+                                st.image("https://via.placeholder.com/300x200?text=Flux+Course", use_container_width=True)
                             st.write(f"**{c_name}**")
                             if st.button("Open", key=f"tile_{idx}"):
-                                # This is a simple trick to trigger the search
                                 st.session_state.search_trigger = c_name
                                 st.rerun()
-        except Exception as e:
-            st.info("Add a column named 'image_url' to your Supabase table to enable course tiles.")
+        except Exception:
+            st.info("Configuration: Ensure the 'image_url' column is active in Supabase.")
 
     # Check if a tile was clicked
     final_query = st.session_state.get('search_trigger', search_query)
@@ -132,12 +130,14 @@ elif role == "Student Portal":
     if final_query:
         if 'search_trigger' in st.session_state: del st.session_state.search_trigger
         
+        # Keyword Search across Program and Topic
         res = supabase.table("materials").select("*").or_(f"course_program.ilike.%{final_query}%,course_name.ilike.%{final_query}%").order("week").execute()
         
         if res.data:
             st.divider()
             for item in res.data:
-                with st.expander(f"Week {item['week']} - {item['course_name']}"):
+                # Replaced "Week" with "Module" in the UI
+                with st.expander(f"Module {item['week']} - {item['course_name']}"):
                     raw_url = str(item.get('video_url', ''))
                     if "youtube" in raw_url or "youtu.be" in raw_url:
                         v_id = raw_url.split("v=")[1].split("&")[0] if "v=" in raw_url else raw_url.split("/")[-1]
@@ -148,9 +148,9 @@ elif role == "Student Portal":
                     if item.get('notes_url'):
                         st.link_button("📝 Read Notes", item['notes_url'])
         else:
-            st.warning("No results found.")
+            st.warning("No modules found for that search.")
 
-# --- PRESIDENT BOARD (Simplified) ---
+# --- PRESIDENT BOARD ---
 elif role == "President Board":
     st.header("Post Announcements")
     with st.form("notice"):
