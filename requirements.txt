@@ -1,3 +1,4 @@
-gradio
-Pillow
-requests
+streamlit
+pandas
+supabase
+openpyxl
