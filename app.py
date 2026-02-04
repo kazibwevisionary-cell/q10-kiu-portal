@@ -3,52 +3,49 @@ import pandas as pd
 from supabase import create_client
 import re
 
-# 1. UI CONFIGURATION (CRITICAL: MUST BE LINE 1)
-st.set_page_config(page_title="Flux", layout="wide")
+# 1. Page Configuration (Must be first)
+st.set_page_config(page_title="KIU Portal", layout="wide")
 
-# 2. DATABASE CONNECTION (HARDCODED)
-PROJECT_ID = "uxtmgdenwfyuwhezcleh"
-SUPABASE_URL = f"https://{PROJECT_ID}.supabase.co"
-SUPABASE_KEY = "sb_publishable_1BIwMEH8FVDv7fFafz31uA_9FqAJr0-" 
+# 2. Database Connection
+SUPABASE_URL = "https://uxtmgdenwfyuwhezcleh.supabase.co"
+SUPABASE_KEY = "sb_publishable_1BIwMEH8FVDv7fFafz31uA_9FqAJr0-"
 
 @st.cache_resource
 def get_supabase():
-    try:
-        # We use a timeout or basic check to prevent the app from hanging
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception as e:
-        st.error(f"Database Connection Failed: {e}")
-        return None
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 supabase = get_supabase()
 
-# 3. HELPER: Converts Google Drive "Share" links to "Direct Image" links
-def convert_drive_url(url):
-    if "drive.google.com" in url:
-        match = re.search(r'[-\w]{25,}', url)
-        if match:
-            return f"https://drive.google.com/uc?id={match.group()}"
-    return url
+# 3. Main UI
+st.title("KIU Learning Portal")
 
-# 4. UI STYLE
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@700&display=swap');
+# 4. Fixed Query Logic
+# We removed 'image_url' because it does not exist in your Supabase table
+try:
+    search_query = st.text_input("Search for courses...")
     
-    .main-title {
-        font-family: 'Comic Neue', cursive;
-        color: #FF4B4B;
-        text-align: center;
-        font-size: 3rem;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    if not search_query:
+        st.subheader("Explore Courses")
+        # Fetching only existing columns to prevent '42703' error
+        tiles_data = supabase.table("materials").select("course_program").execute()
+        
+        if tiles_data.data:
+            # Create unique courses list without relying on image_url
+            unique_courses = list(set([item['course_program'] for item in tiles_data.data]))
+            
+            cols = st.columns(min(len(unique_courses), 4))
+            for i, course in enumerate(unique_courses):
+                with cols[i % 4]:
+                    st.info(f"📚 {course}")
+    else:
+        # Search logic
+        results = supabase.table("materials").select("*").ilike("course_program", f"%{search_query}%").execute()
+        if results.data:
+            st.write(pd.DataFrame(results.data))
+        else:
+            st.warning("No courses found.")
 
-st.markdown('<h1 class="main-title">Flux</h1>', unsafe_allow_html=True)
+except Exception as e:
+    st.error(f"An error occurred: {e}")
 
-# 5. DATA TEST
-if supabase:
-    st.success("⚡ Connected to Supabase")
-    # You can now add your supabase queries here
-else:
-    st.error("❌ Could not connect to database.")
+# IMPORTANT: No Gradio .launch() calls here as they crash Streamlit Cloud
