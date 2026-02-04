@@ -14,13 +14,15 @@ except Exception:
     st.stop()
 
 # 2. UI CONFIG & FOOTER
-st.set_page_config(page_title="KIU Q10 Portal", layout="wide", page_icon="🎓")
+st.set_page_config(page_title="Flux Portal", layout="wide", page_icon="⚡")
 
 st.markdown("""
     <style>
     .footer { position: fixed; left: 0; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #666; font-size: 14px; background: white; border-top: 1px solid #eee; z-index: 999; }
     .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; border-radius: 8px; margin-bottom: 10px; }
     .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+    .course-tile { border: 1px solid #ddd; border-radius: 10px; padding: 10px; margin-bottom: 20px; transition: 0.3s; }
+    .course-tile:hover { border-color: #ff4b4b; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -29,7 +31,7 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center; margin-top: 50px;'>🎓 KIU Q10 Portal</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; margin-top: 50px;'>⚡ Flux Portal</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1,1.5,1])
     with col2:
         with st.container(border=True):
@@ -47,22 +49,31 @@ role = st.sidebar.radio("Navigation", ["Student Portal", "Admin Dashboard", "Pre
 
 # --- ADMIN DASHBOARD ---
 if role == "Admin Dashboard":
-    st.header("🛠 Management Console")
+    st.header("🛠 Flux Management Console")
     t1, t2, t3 = st.tabs(["➕ Add Entry", "📊 Bulk Upload", "🗑️ Delete Content"])
     
     with t1:
         with st.form("manual"):
-            p = st.text_input("Course Name")
+            p = st.text_input("Course Name (Program)")
             t = st.text_input("Module Topic")
             w = st.number_input("Week Number", 1, 15)
             y = st.text_input("YouTube/Slide Link")
             n = st.text_input("Notes Link")
-            if st.form_submit_button("Save to Portal"):
-                supabase.table("materials").insert({"course_program": p, "course_name": t, "week": w, "video_url": y, "notes_url": n}).execute()
+            img = st.text_input("Course Image URL (for tiles)")
+            if st.form_submit_button("Save to Flux"):
+                supabase.table("materials").insert({
+                    "course_program": p, 
+                    "course_name": t, 
+                    "week": w, 
+                    "video_url": y, 
+                    "notes_url": n,
+                    "image_url": img
+                }).execute()
                 st.success("Module saved successfully!")
 
     with t2:
         target = st.text_input("Target Course Name (e.g. Petroleum Engineering)")
+        target_img = st.text_input("Default Image URL for this batch")
         wipe = st.checkbox("Wipe current data for this course before upload?")
         f = st.file_uploader("Upload CSV/Excel", type=["xlsx", "csv"])
         if f and target and st.button("🚀 Start Bulk Upload"):
@@ -75,7 +86,8 @@ if role == "Admin Dashboard":
                     "course_name": str(row.get('Topic Covered', '')),
                     "week": int(row.get('Week', 1)) if 'Week' in df.columns else 1,
                     "video_url": str(row.get('Embeddable YouTube Video Link', '')),
-                    "notes_url": str(row.get('link to Google docs Document', ''))
+                    "notes_url": str(row.get('link to Google docs Document', '')),
+                    "image_url": target_img
                 }).execute()
             st.success("Bulk Upload Finished!")
 
@@ -101,28 +113,53 @@ elif role == "President Board":
 
 # --- STUDENT PORTAL ---
 elif role == "Student Portal":
-    st.title("📖 Learning Modules")
-    search = st.text_input("🔍 Search for your Course (e.g. 'Petroleum Engineering')").strip()
+    st.title("📖 Flux Learning Modules")
     
-    if search:
-        res = supabase.table("materials").select("*").ilike("course_program", f"%{search}%").order("week").execute()
+    # Keyword search bar
+    search_query = st.text_input("🔍 Search for your Course or Topic (Keyword)")
+    search_btn = st.button("Enter", use_container_width=True)
+    
+    # 1. Show Visual Tiles (Course Thumbnails) when not searching
+    if not search_query:
+        st.subheader("Explore Courses")
+        # Fetch unique courses to show as tiles
+        tiles_data = supabase.table("materials").select("course_program, image_url").execute()
+        if tiles_data.data:
+            unique_courses = {item['course_program']: item['image_url'] for item in tiles_data.data}
+            cols = st.columns(4)
+            for idx, (c_name, c_img) in enumerate(unique_courses.items()):
+                with cols[idx % 4]:
+                    st.markdown(f'<div class="course-tile">', unsafe_allow_html=True)
+                    if c_img:
+                        st.image(c_img, use_column_width=True)
+                    else:
+                        st.image("https://via.placeholder.com/300x200?text=No+Image", use_column_width=True)
+                    st.markdown(f"**{c_name}**", unsafe_allow_html=True)
+                    if st.button(f"View {c_name}", key=f"btn_{idx}"):
+                        search_query = c_name
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+    # 2. Search Logic (Allows keyword search across program and topic)
+    if search_query or search_btn:
+        # Search by keyword in course_program OR course_name
+        res = supabase.table("materials").select("*").or_(f"course_program.ilike.%{search_query}%,course_name.ilike.%{search_query}%").order("week").execute()
+        
         if res.data:
+            st.divider()
+            st.subheader(f"Results for: {search_query}")
             for item in res.data:
-                with st.expander(f"📚 Week {item['week']} - {item['course_name']}"):
+                with st.expander(f"📚 {item['course_program']} | Week {item['week']} - {item['course_name']}"):
                     raw_url = str(item.get('video_url', ''))
                     
-                    # 📽️ YOUTUBE EMBED LOGIC
                     if "youtube.com" in raw_url or "youtu.be" in raw_url:
-                        # Force correct embed format
                         v_id = raw_url.split("v=")[1].split("&")[0] if "v=" in raw_url else raw_url.split("/")[-1]
                         embed_url = f"https://www.youtube.com/embed/{v_id}"
-                        
                         st.markdown(f'<div class="video-container"><iframe src="{embed_url}" allowfullscreen></iframe></div>', unsafe_allow_html=True)
-                        st.link_button("📺 Watch on YouTube (If player says unavailable)", f"https://www.youtube.com/watch?v={v_id}")
+                        st.link_button("📺 Watch on YouTube", f"https://www.youtube.com/watch?v={v_id}")
                     
-                    # 📊 GOOGLE SLIDES LOGIC
                     elif "docs.google.com" in raw_url:
-                        st.info("Presentation Slides Available Below")
+                        st.info("Presentation Slides Available")
                         slide_url = raw_url.replace("/edit", "/embed")
                         st.markdown(f'<div class="video-container"><iframe src="{slide_url}"></iframe></div>', unsafe_allow_html=True)
                         st.link_button("📂 View Full Slides", raw_url)
@@ -131,7 +168,7 @@ elif role == "Student Portal":
                         st.write("---")
                         st.link_button("📝 Read Lecture Notes", item['notes_url'])
         else:
-            st.info("Search for a course to view available weeks.")
+            st.warning("No modules found matching that keyword.")
 
 # 5. FIXED FOOTER
-st.markdown('<div class="footer">Built by KMT Dynamics</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">Built by KMT Dynamics | Flux Portal</div>', unsafe_allow_html=True)
