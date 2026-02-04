@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client
+import re
 
 # 1. DATABASE CONNECTION
 PROJECT_ID = "uxtmgdenwfyuwhezcleh"
@@ -13,6 +14,15 @@ except Exception:
     st.error("Database Connection Failed.")
     st.stop()
 
+# HELPER: Convert Google Drive Link to Direct Image Link
+def fix_drive_url(url):
+    if "drive.google.com" in url:
+        # Extract the ID from the URL
+        match = re.search(r'[-\w]{25,}', url)
+        if match:
+            return f"https://drive.google.com/uc?id={match.group()}"
+    return url
+
 # 2. UI CONFIG & FOOTER
 st.set_page_config(page_title="Flux", layout="wide")
 
@@ -21,23 +31,13 @@ st.markdown("""
     .footer { position: fixed; left: 0; bottom: 0; width: 100%; text-align: center; padding: 10px; color: #666; font-size: 14px; background: white; border-top: 1px solid #eee; z-index: 999; }
     .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; border-radius: 8px; margin-bottom: 10px; }
     .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
-    .course-tile { border: 1px solid #ddd; border-radius: 10px; padding: 10px; margin-bottom: 20px; text-align: center; }
-    
-    /* Increased Flux Font Size */
-    .main-title {
-        font-size: 42px !important;
-        font-weight: 800;
-        text-align: center;
-        margin-top: 20px;
-        margin-bottom: 20px;
-        letter-spacing: -1px;
-    }
+    .course-tile { border: 1px solid #ddd; border-radius: 10px; padding: 10px; margin-bottom: 20px; text-align: center; background: white; }
+    .main-title { font-size: 42px !important; font-weight: 800; text-align: center; margin-top: 20px; margin-bottom: 20px; }
     h1 { font-size: 28px !important; font-weight: 600; }
-    h2 { font-size: 22px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. LOGIN PAGE (GLOBAL ACCESS)
+# 3. LOGIN PAGE
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
@@ -52,99 +52,88 @@ if not st.session_state.logged_in:
             if st.button("Login", use_container_width=True) or st.button("⏭️ Skip & Browse", use_container_width=True):
                 st.session_state.logged_in = True
                 st.rerun()
-    st.markdown('<div class="footer">Built by KMT Dynamics</div>', unsafe_allow_html=True)
     st.stop()
 
 # 4. SIDEBAR
-role = st.sidebar.radio("Navigation", ["Student Portal", "Admin Dashboard", "President Board"])
+role = st.sidebar.radio("Navigation", ["Student Portal", "Course Creator (Admin)", "President Board"])
 
-# --- ADMIN DASHBOARD (With Password Protection) ---
-if role == "Admin Dashboard":
-    st.header("Admin Access")
+# --- COURSE CREATOR (ADMIN) ---
+if role == "Course Creator (Admin)":
+    st.header("Course Creation Console")
     admin_pw = st.text_input("Enter Admin Password", type="password")
     
     if admin_pw == "flux":
         st.success("Access Granted")
-        st.divider()
-        t1, t2, t3 = st.tabs(["➕ Add Entry", "📊 Bulk Upload", "🗑️ Delete Content"])
         
-        with t1:
-            with st.form("manual"):
-                p = st.text_input("Course Name (Program)")
-                t = st.text_input("Module Topic")
-                w = st.number_input("Module Number", 1, 100)
-                y = st.text_input("YouTube/Slide Link")
-                n = st.text_input("Notes Link")
-                img = st.text_input("Course Cover Image URL")
-                if st.form_submit_button("Save to Flux"):
-                    supabase.table("materials").insert({
-                        "course_program": p, "course_name": t, "week": w, 
-                        "video_url": y, "notes_url": n, "image_url": img
-                    }).execute()
-                    st.success("Module saved successfully!")
-
-        with t2:
-            target = st.text_input("Target Course Name")
-            target_img = st.text_input("Default Image URL for this batch")
-            wipe = st.checkbox("Wipe current data for this course?")
-            f = st.file_uploader("Upload CSV/Excel", type=["xlsx", "csv"])
-            if f and target and st.button("🚀 Start Bulk Upload"):
-                if wipe: supabase.table("materials").delete().eq("course_program", target).execute()
-                df = pd.read_excel(f) if "xlsx" in f.name else pd.read_csv(f)
-                for _, row in df.iterrows():
-                    supabase.table("materials").insert({
-                        "course_program": target,
-                        "course_name": str(row.get('Topic Covered', '')),
-                        "week": int(row.get('Module', row.get('Week', 1))),
-                        "video_url": str(row.get('Embeddable YouTube Video Link', '')),
-                        "notes_url": str(row.get('link to Google docs Document', '')),
-                        "image_url": target_img
-                    }).execute()
-                st.success("Bulk Upload Finished!")
-
-        with t3:
-            data = supabase.table("materials").select("*").execute()
-            if data.data:
-                for item in data.data:
-                    c1, c2 = st.columns([4, 1])
-                    c1.write(f"**{item['course_program']}** | Mod {item['week']}: {item['course_name']}")
-                    if c2.button("🗑️ Delete", key=f"del_{item['id']}"):
-                        supabase.table("materials").delete().eq("id", item['id']).execute()
-                        st.rerun()
-    elif admin_pw != "":
-        st.error("Incorrect Password")
+        with st.container(border=True):
+            st.subheader("Create New Course")
+            c_name = st.text_input("Course Name (e.g., Civil Engineering)")
+            c_img_raw = st.text_input("Google Drive Image URL (Course Tile)")
+            c_img = fix_drive_url(c_img_raw)
+            
+            st.write("---")
+            st.write("📂 **Upload Module Content**")
+            st.caption("Upload your Excel file. Modules will be numbered automatically (1, 2, 3...) based on the row order.")
+            f = st.file_uploader("Upload Excel/CSV", type=["xlsx", "csv"])
+            
+            if st.button("🚀 Create Course & Generate Modules", use_container_width=True):
+                if not c_name or not f:
+                    st.error("Please provide both a Course Name and a file.")
+                else:
+                    # Load data
+                    df = pd.read_excel(f) if "xlsx" in f.name else pd.read_csv(f)
+                    df.columns = [str(c).strip() for c in df.columns]
+                    
+                    progress_bar = st.progress(0)
+                    total_rows = len(df)
+                    
+                    for index, row in df.iterrows():
+                        # Sequential module number based on row index (starting at 1)
+                        mod_num = index + 1
+                        
+                        supabase.table("materials").insert({
+                            "course_program": c_name,
+                            "course_name": str(row.get('Topic Covered', f"Module {mod_num} Content")),
+                            "week": mod_num, # Using sequential number
+                            "video_url": str(row.get('Embeddable YouTube Video Link', '')),
+                            "notes_url": str(row.get('link to Google docs Document', '')),
+                            "image_url": c_img
+                        }).execute()
+                        
+                        progress_bar.progress((index + 1) / total_rows)
+                    
+                    st.success(f"Course '{c_name}' created with {total_rows} sequential modules!")
 
 # --- STUDENT PORTAL ---
 elif role == "Student Portal":
     st.markdown("<div class='main-title'>Flux</div>", unsafe_allow_html=True)
     
     search_query = st.text_input("Search for your Course or Topic").strip()
-    search_btn = st.button("Enter", use_container_width=True)
     
     if not search_query:
         st.subheader("Explore Courses")
         try:
             tiles_data = supabase.table("materials").select("course_program, image_url").execute()
             if tiles_data.data:
-                unique_courses = {}
-                for item in tiles_data.data:
-                    if item['course_program'] not in unique_courses:
-                        unique_courses[item['course_program']] = item.get('image_url', None)
-
+                # Group by course name to only show one tile per course
+                unique_courses = {item['course_program']: item.get('image_url') for item in tiles_data.data}
+                
                 cols = st.columns(4)
                 for idx, (c_name, c_img) in enumerate(unique_courses.items()):
                     with cols[idx % 4]:
                         with st.container(border=True):
+                            # Display fixed Drive image or placeholder
                             if c_img:
                                 st.image(c_img, use_container_width=True)
                             else:
                                 st.image("https://via.placeholder.com/300x200?text=Flux+Course", use_container_width=True)
+                            
                             st.write(f"**{c_name}**")
-                            if st.button("Open", key=f"tile_{idx}"):
+                            if st.button("Open Course", key=f"tile_{idx}"):
                                 st.session_state.search_trigger = c_name
                                 st.rerun()
-        except Exception:
-            st.info("Admin: Ensure the 'image_url' column is active in Supabase.")
+        except Exception as e:
+            st.info("No courses found. Use the Admin Dashboard to add content.")
 
     final_query = st.session_state.get('search_trigger', search_query)
 
@@ -154,24 +143,26 @@ elif role == "Student Portal":
         
         if res.data:
             st.divider()
+            st.subheader(f"Modules for {final_query}")
             for item in res.data:
                 with st.expander(f"Module {item['week']} - {item['course_name']}"):
                     raw_url = str(item.get('video_url', ''))
                     if "youtube" in raw_url or "youtu.be" in raw_url:
                         v_id = raw_url.split("v=")[1].split("&")[0] if "v=" in raw_url else raw_url.split("/")[-1]
                         st.markdown(f'<div class="video-container"><iframe src="https://www.youtube.com/embed/{v_id}" allowfullscreen></iframe></div>', unsafe_allow_html=True)
-                    elif "docs.google.com" in raw_url:
-                        st.markdown(f'<div class="video-container"><iframe src="{raw_url.replace("/edit", "/embed")}"></iframe></div>', unsafe_allow_html=True)
                     
                     if item.get('notes_url'):
-                        st.link_button("📝 Read Notes", item['notes_url'])
+                        # Allowing multiple links if comma separated, otherwise single button
+                        notes = item['notes_url'].split(",")
+                        for i, link in enumerate(notes):
+                            label = f"📝 Read Class Notes {i+1}" if len(notes) > 1 else "📝 Read Class Notes"
+                            st.link_button(label, link.strip())
         else:
             st.warning("No modules found.")
 
 # --- PRESIDENT BOARD ---
 elif role == "President Board":
     st.header("Post Announcements")
-    # Added password check here too just in case
     pres_pw = st.text_input("Enter Board Password", type="password")
     if pres_pw == "flux":
         with st.form("notice"):
