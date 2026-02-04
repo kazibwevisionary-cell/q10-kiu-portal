@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client
 
-# 1. UI CONFIG (CRITICAL: MUST BE LINE 1)
+# 1. UI CONFIG (Must be the very first line)
 st.set_page_config(page_title="KIU Portal", layout="wide")
 
 # 2. DATABASE CONNECTION
+# Using your provided project credentials
 URL = "https://uxtmgdenwfyuwhezcleh.supabase.co"
 KEY = "sb_publishable_1BIwMEH8FVDv7fFafz31uA_9FqAJr0-"
 
@@ -15,41 +16,39 @@ def init_connection():
 
 supabase = init_connection()
 
-# 3. SIMPLE HEADER
+# 3. HEADER
 st.title("🎓 KIU Learning Portal")
 
-# 4. SAFETY-FIRST DATA LOGIC
+# 4. FIXED DATA LOGIC (No image_url)
 try:
-    # We fetch everything, but we handle missing columns in Python so the app NEVER crashes
-    response = supabase.table("materials").select("*").execute()
+    # Fetch data but ONLY the columns we are sure exist
+    response = supabase.table("materials").select("course_program, material_title").execute()
     
     if response.data:
         df = pd.DataFrame(response.data)
         
-        # SEARCH BAR
+        # Search interface
         search = st.text_input("🔍 Search programs", placeholder="e.g. Computer Science")
-        
-        # SAFE COLUMN CHECK: This is the fix for error 42703
-        main_col = 'course_program' if 'course_program' in df.columns else df.columns[0]
         
         if not search:
             st.subheader("Available Programs")
-            unique_items = df[main_col].unique()
-            cols = st.columns(min(len(unique_items), 3))
-            for i, item in enumerate(unique_items):
+            # Get unique courses to display as simple info boxes
+            unique_courses = df['course_program'].unique()
+            cols = st.columns(min(len(unique_courses), 3))
+            for i, course in enumerate(unique_courses):
                 with cols[i % 3]:
-                    st.info(f"📁 {item}")
+                    st.info(f"📚 {course}")
         else:
-            # Filtered search view
-            filtered = df[df[main_col].str.contains(search, case=False, na=False)]
-            st.dataframe(filtered, use_container_width=True)
+            # Filtered search view using 'width=stretch' to avoid warnings
+            filtered = df[df['course_program'].str.contains(search, case=False, na=False)]
+            st.dataframe(filtered, width='stretch')
             
     else:
         st.warning("Database connected, but the 'materials' table is empty.")
-        st.info("Add data in your Supabase dashboard to see it here.")
 
 except Exception as e:
-    st.error("The app is live, but we are still syncing with your database.")
-    st.write("Technical detail for you:", str(e))
+    # Defensive error handling to prevent the red crash screen
+    st.error("Waiting for database to sync. Please refresh in a moment.")
+    print(f"DEBUG: {e}")
 
-# NO .launch() or Gradio code allowed here.
+# IMPORTANT: No Gradio code here.
